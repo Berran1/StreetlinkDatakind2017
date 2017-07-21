@@ -47,6 +47,27 @@ dim(data_C)
 dim(data_D)
 dim(data_E)
 
+# add post time from sql file to All Streetlink data and then remove sql file - not otherwise needed
+sqldata <- read_csv("StreetLink_SQL_June17.csv")
+
+#separate sql data Post date_1 col into date and time
+sqldata <- sqldata %>% separate(`Post date_1`, into = c("PostDate1", "PostTime"), sep = " - ") 
+
+#sqldata %>% count(is.na(PostTime)) # no times are missing
+#sqldata %>% count(`Post date` == PostDate1) # all dates match up
+
+# subset for joining
+recordTimes <- sqldata %>% select(`Ref no`, PostTime)
+
+# add PostTime to data_B and insert next to Post date
+data_B <- data_B %>% left_join(recordTimes, by = "Ref no") %>% 
+        select(ID:`Post date`, PostTime, everything())
+#data_B %>% count(is.na(PostTime)) #241 have no time recorded - v low proportion, acceptable
+data_B <- data.table(data_B)
+# remove sql data
+rm(sqldata)
+
+
 # Rename columns for easier anlaysis across different platforms people may be using
 # (1) change to Title Case, (2) remove spaces and (3) remove special characters 
 
@@ -90,7 +111,7 @@ data_E <- LAclean(data_E)
 names(data_D)[names(data_D)=="LAName"]<-"LocalAuthority" # rename variable in look up file to same name to prep for mergin
 data_D[,"LocalAuthority":=gsub("\\.","",gsub("&","And" ,sapply(gsub("-", " ",LocalAuthority),simpleCap)))] # Replace the ampersand with "and" to match file A
 
-## identifying overlap in tables
+## identifying overlap in tables and setting common names with Merged where simple
 
 data_E <- data_E %>% rename(RefNo = ReferralNumber)
 
@@ -114,36 +135,34 @@ data_E <- data_E %>% rename(BuildingNo = NEARESTBUILDINGNUMBER,
 
 # Find All Streetlink records in merged with Streetlink (W) RefNo
 SLinmerged <- data_B %>% semi_join(data_A, by = "RefNo")
-
-# Flag for All Streetlink records sent to CHAIN 
-data_B <- data_B %>% mutate(InCHAIN = ifelse(is.na(RefNo), NA, ifelse(RefNo %in% SLinCHAIN$RefNo, 1, 0))) 
-
-
-
-# Additionally flag InMerged All Streetlink records that are in as CHAIN RefNos
-CHAINinmerged <- data_E %>% semi_join(data_A, by = "RefNo")
-data_E <- data_E %>% mutate(InMerged = ifelse(is.na(RefNo), NA, ifelse(RefNo %in% SLinCHAIN$RefNo, 1, 0)))
-
 # Flag for All Streetlink records in Merged
 data_B <- data_B %>% mutate(InMerged = ifelse(is.na(RefNo), NA, ifelse(RefNo %in% SLinmerged$RefNo, 1, 0)))
 
+# Flag InMerged All CHAIN records in merged
+CHAINinmerged <- data_E %>% semi_join(data_A, by = "RefNo")
+data_E <- data_E %>% mutate(InMerged = ifelse(is.na(RefNo), NA, ifelse(RefNo %in% CHAINinmerged$RefNo, 1, 0))) 
+
 # enable matching of SL(B) in CHAIN(E)
 
-data_E %>% filter(!is.na(StreetlinkWebsiteReferralNumber), !grepl("^W", StreetlinkWebsiteReferralNumber)) %>% 
+#data_E %>% filter(!is.na(StreetlinkWebsiteReferralNumber), !grepl("^W", StreetlinkWebsiteReferralNumber)) %>% 
         View()
 # 182 entries that don't start with W. Most misaligned ie addresses. 
 # 1 of these has lowercase. 
 data_E <- data_E %>% mutate(StreetlinkWebsiteReferralNumber = gsub("wd", "WD", StreetlinkWebsiteReferralNumber))
 data_E %>% count(grepl("W", StreetlinkWebsiteReferralNumber),
-        grepl("WM", StreetlinkWebsiteReferralNumber), 
-        grepl("WD", StreetlinkWebsiteReferralNumber)) %>% 
+                 grepl("WM", StreetlinkWebsiteReferralNumber), 
+                 grepl("WD", StreetlinkWebsiteReferralNumber)) %>% 
         View()
 # 1630 W only, 16737 WD, 6388 WM. 
 
-#match on  (some W not WM or WD)
+#match on just numbers of streetlinkreferral for CHAIN (some W not WM or WD)
 data_B <- data_B %>% mutate(SLID = as.character(gsub("[[:alpha:]]", "", RefNo)))
 data_E <- data_E %>% mutate(SLID = as.character(gsub("W[MD]?", "", StreetlinkWebsiteReferralNumber))) 
 SLinCHAIN <- data_B %>% semi_join(data_E, by = "SLID")
+
+# Flag for All Streetlink records sent to CHAIN 
+data_B <- data_B %>% mutate(InCHAIN = ifelse(is.na(RefNo), NA, ifelse(RefNo %in% SLinCHAIN$RefNo, 1, 0))) 
+
 
 # create a way to look across the rows of same-SLID data
 CHAINwithSL <- data_E %>% filter(grepl("^W", StreetlinkWebsiteReferralNumber)) %>% left_join(SLinCHAIN, by = "SLID") 
@@ -151,32 +170,15 @@ CHAINwithSL %>% View()
 # write to file for later deduping
 write_csv(CHAINwithSL, "CHAINwithSL.csv")
 
-
-
-
-## Unify names of cols (pre initial merge)
-
-names(CHAINwithSL)
-
-# User details in CHAIN and Streetlink
-#data_E <- data_E %>% rename(UserName = ReferrerName, UserEmail = ReferrerEmail, UserTelephoneNo = ReferrerTelephone)
-#  Cols in Merged data_A
-#data_E <- data_E %>% rename(PostDate = ReferralDate) #maybe not always?
-
-                            
+             
 
 ## Merge files
 
 
-data_merged<-merge(x=data_A, y=data_D, by = "LocalAuthority", all.x=TRUE)
-
-
+data_merged <- data_A %>% left_join(data_D, by = "LocalAuthority")
 data_B <- data_B %>% left_join(data_D, by = "LocalAuthority")
 data_E <- data_E %>% left_join(data_D, by = "LocalAuthority")
-
-# write these tables for separate cleaning functions
-write_csv(data_B, "data_B.csv")
-
+CHAINwithSL <- CHAINwithSL %>% left_join(data_D, by = "LocalAuthority")
 
 # Merge A with CHAINwithSL (to get all cols)
 # remove .x from CHAIN names to allow easier merging
@@ -184,7 +186,7 @@ names(CHAINwithSL) <- gsub("\\.x", "", names(CHAINwithSL))
 
 CHAINwithSLkeeplist <- c("RefNo", setdiff(names(CHAINwithSL), names(data_merged)))
 CHAINwithSLkeeps <- CHAINwithSL %>% select(one_of(CHAINwithSLkeeplist))
-CHAINwithSL <- CHAINwithSL %>% left_join(data_D, by = "LocalAuthority")
+
 data_CSL <- data_merged %>% inner_join(CHAINwithSLkeeps, by = "RefNo")
 
 
@@ -195,16 +197,13 @@ data_Eotherkeeps <- data_Eother %>% select(one_of(Eother_keeplist))
 
 
 data_ME <- data_merged %>% inner_join(data_Eotherkeeps, by = "RefNo")
-# create Merged with CHAIN from SL and CHAIN not with SL ref
+# create Merged + CHAIN - CHAIN data added to all CHAIN refs in Merged
 data_MC <- bind_rows(data_CSL, data_ME)
 
 
-names(data_Eothernotmerged)
-names(data_MC)
 
-data_MCS %>% filter(SLID == "357846") %>% View()
 # Merge A with B that weren't in the join with CHAIN, keeping all in A and left join to B
-# Use clean data (i.e. data_A) as base file for main analyses and determine columns in B that are already in A
+
 names(data_MC) %>% subset(grepl("\\.y", names(data_MC)))
 # add suffixes to data_B names for binding with data_merged
 data_Bother <- data_B %>% anti_join(CHAINwithSL, by = c("ID" = "ID.y"))
@@ -218,14 +217,16 @@ data_Bother <- data_Bother %>% rename(ID.y = ID, RefNo.y = RefNo, LocalAuthority
                        InMerged.y = InMerged)
 Bother_keeplist<-c("RefNo.y", setdiff(names(data_Bother),names(data_merged)))
 data_Botherkeeps <- data_Bother %>% select(one_of(Bother_keeplist))
-#data_merged <- merge(x = data_merged, y = data_B[,mget(B_keeplist)], by = "RefNo", all.x = TRUE)
 
+# dataset of Merged with Streetlink references (and not duplicated in CHAIN) with Streetlink cols
 data_MB <- data_merged %>% inner_join(data_Botherkeeps, by = c("RefNo" = "RefNo.y"))
 
 # create Merged with CHAIN from SL and CHAIN not with SL and SL not with CHAIN ref
+# this would (after further cleaning) be basis for "outcomes" question
 data_MCS <- bind_rows(data_MC, data_MB)
 
-# bind rows not in merged from each source
+# bind rows not referred (ie not in Merged file originally) from each source
+
 CHAINwithSLnotmerged <- CHAINwithSL %>% anti_join(data_merged, by = "RefNo")
 data_full <- bind_rows(data_MCS, CHAINwithSLnotmerged)
 
@@ -240,17 +241,13 @@ data_full <- bind_rows(data_full, data_Bothernotmerged)
 
 
 
-#### All matched now
-
-#table(data_merged$NotMatchedToTableBAllFile, data_merged$NotMatchedToTableEChainFile) #More than half not matched to B?
-
 
 ## Clean data - TO BE ADDED HERE
 
 summary(data_full)
 
 # Write file
-write.csv(data_full,"DataKind_Cleaned_Data_20170715.csv",row.names=FALSE)
+write.csv(data_full,"DataKind_Merged_Data.csv",row.names=FALSE)
 
 # deal with entries that are duplicates in merged (with Streetlink and CHAIN entries) n = 125
 missingmerged <- data_A %>% anti_join(data_MCS, by = "RefNo") 
