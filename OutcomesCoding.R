@@ -5,12 +5,12 @@ library(forcats)
 
 
 # clean outcomes to match usage report
-names(data_full)
+
 #data_full %>% count(Outcome) %>% View()
 #data_full %>% count(is.na(Outcome), is.na(Outcome.y))
 #data_full %>% count(Outcome, Outcome1) %>% View()
 
-data_full <- data_full2
+
 #data_full %>% count(Outcome) %>% View() # unite and use CHAIN (Outcome) if overlap
 # because presumably it's better recorded. 
 # remove Outcome1 and then the other SL outcomes
@@ -21,7 +21,7 @@ data_full <- data_full %>% mutate(Outcome = tolower(Outcome),
 Outcomeasfactor <- na.omit(unique(data_full$Outcome))
 
 data_full <- data_full %>% mutate(Outcome2 = factor(Outcome, levels = Outcomeasfactor))
-data_full %>% filter(Outcome2 == "created on chain") %>% View()
+#data_full %>% filter(Outcome2 == "created on chain") %>% View()
 data_full <- data_full %>% mutate(Outcome2 = fct_recode(Outcome2,
                                                         "accommodation outcome" = "accommodation", 
                                                         "accommodation outcome" = "action taken – housing outcome",
@@ -42,9 +42,17 @@ data_full <- data_full %>% mutate(Outcome2 = fct_recode(Outcome2,
 # to check: created on chain  but no CHAIN reference (n = 367)
 
 positiveOutcomes <- c("person already known", "accommodation outcome", "other action taken", 
-                      "engaging with services", "person found - unwilling to engage")
+                      "engaging with services", "person found - unwilling to engage", "no action taken - identified hotspot")
 data_full <- data_full %>% mutate(PositiveOutcome = ifelse(Outcome2 %in% positiveOutcomes, 1, 0)) 
 # need to confirm these assignments! and work out what NA is. 
-data_full %>% count(Outcome2) %>% write_csv("Outcomes.csv")
+#data_full %>% count(Outcome2) %>% write_csv("Outcomes.csv")
 
-data_full2 <- data_full
+#data_full %>% count(CaseClosedReporting, Outcome2) %>% View()
+# mostly consistent. Use Outcome (also HLOutcomein CHAIN) as what reported to SL/HL. 
+# more accommodation outcomes in Outcome than CaseClosedReporting. 
+# which means we can remove CHAIN options of CaseClosedReporting and Date of that
+data_full <- data_full %>% mutate(CaseClosedReporting = NULL, 
+                                  DateCaseClosed = NULL)
+
+
+                                  

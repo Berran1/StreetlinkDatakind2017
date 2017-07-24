@@ -115,6 +115,11 @@ data_D[,"LocalAuthority":=gsub("\\.","",gsub("&","And" ,sapply(gsub("-", " ",Loc
 
 data_E <- data_E %>% rename(RefNo = ReferralNumber)
 
+# add a duplicate refno column to both E and A so that they can be used more easily
+# after merging with merged.
+data_E <- data_E %>% mutate(RefNoCHAIN = RefNo)
+data_B <- data_B %>% mutate(RefNoSL = RefNo)
+
 data_E <- data_E %>% rename(FeedbackRequested = DoesReferrerWantFeedback,
                             FeedbackProvidedToReferrer = ReferrerContactedWithOutcome, 
                             Outcome = HLOutcome,
@@ -145,14 +150,14 @@ data_E <- data_E %>% mutate(InMerged = ifelse(is.na(RefNo), NA, ifelse(RefNo %in
 # enable matching of SL(B) in CHAIN(E)
 
 #data_E %>% filter(!is.na(StreetlinkWebsiteReferralNumber), !grepl("^W", StreetlinkWebsiteReferralNumber)) %>% 
-        View()
+#        View()
 # 182 entries that don't start with W. Most misaligned ie addresses. 
 # 1 of these has lowercase. 
 data_E <- data_E %>% mutate(StreetlinkWebsiteReferralNumber = gsub("wd", "WD", StreetlinkWebsiteReferralNumber))
-data_E %>% count(grepl("W", StreetlinkWebsiteReferralNumber),
-                 grepl("WM", StreetlinkWebsiteReferralNumber), 
-                 grepl("WD", StreetlinkWebsiteReferralNumber)) %>% 
-        View()
+#data_E %>% count(grepl("W", StreetlinkWebsiteReferralNumber),
+#                 grepl("WM", StreetlinkWebsiteReferralNumber), 
+#                 grepl("WD", StreetlinkWebsiteReferralNumber)) %>% 
+#        View()
 # 1630 W only, 16737 WD, 6388 WM. 
 
 #match on just numbers of streetlinkreferral for CHAIN (some W not WM or WD)
@@ -166,19 +171,20 @@ data_B <- data_B %>% mutate(InCHAIN = ifelse(is.na(RefNo), NA, ifelse(RefNo %in%
 
 # create a way to look across the rows of same-SLID data
 CHAINwithSL <- data_E %>% filter(grepl("^W", StreetlinkWebsiteReferralNumber)) %>% left_join(SLinCHAIN, by = "SLID") 
-CHAINwithSL %>% View()
+CHAINwithSL %>% select(HowRegularly.y) %>% View()
 # write to file for later deduping
 write_csv(CHAINwithSL, "CHAINwithSL.csv")
 
              
 
 ## Merge files
+write_csv(data_D, "LocalAuthorityRegions.csv")
 
-
-data_merged <- data_A %>% left_join(data_D, by = "LocalAuthority")
-data_B <- data_B %>% left_join(data_D, by = "LocalAuthority")
-data_E <- data_E %>% left_join(data_D, by = "LocalAuthority")
-CHAINwithSL <- CHAINwithSL %>% left_join(data_D, by = "LocalAuthority")
+#data_merged <- data_A %>% left_join(data_D, by = "LocalAuthority")
+data_merged <- data_A # join regions after resolving LA conflicts and cleaning - next file!
+#data_B <- data_B %>% left_join(data_D, by = "LocalAuthority")
+#data_E <- data_E %>% left_join(data_D, by = "LocalAuthority")
+#CHAINwithSL <- CHAINwithSL %>% left_join(data_D, by = "LocalAuthority")
 
 # Merge A with CHAINwithSL (to get all cols)
 # remove .x from CHAIN names to allow easier merging
@@ -228,26 +234,27 @@ data_MCS <- bind_rows(data_MC, data_MB)
 # bind rows not referred (ie not in Merged file originally) from each source
 
 CHAINwithSLnotmerged <- CHAINwithSL %>% anti_join(data_merged, by = "RefNo")
-data_full <- bind_rows(data_MCS, CHAINwithSLnotmerged)
+data_all <- bind_rows(data_MCS, CHAINwithSLnotmerged)
 
 data_Eothernotmerged <- data_Eother %>% anti_join(data_merged, by = "RefNo")
-data_full <- bind_rows(data_full, data_Eothernotmerged)
+data_all <- bind_rows(data_all, data_Eothernotmerged)
 # add on not merged (in All Streetlink RefNo) rows of All Streetlink (data_B)
 
 data_Bothernotmerged <- data_Bother %>% anti_join(data_merged, by = c("RefNo.y" = "RefNo"))
-data_full <- bind_rows(data_full, data_Bothernotmerged)
+data_all <- bind_rows(data_all, data_Bothernotmerged)
 
 
+# add RowIDs. 
+data_all <- data_all %>% rowid_to_column(var = "RowID")
 
 
 
 
 ## Clean data - TO BE ADDED HERE
 
-summary(data_full)
 
 # Write file
-write.csv(data_full,"DataKind_Merged_Data.csv",row.names=FALSE)
+write.csv(data_all,"DataKind_Merged_Data.csv",row.names=FALSE)
 
 # deal with entries that are duplicates in merged (with Streetlink and CHAIN entries) n = 125
 missingmerged <- data_A %>% anti_join(data_MCS, by = "RefNo") 

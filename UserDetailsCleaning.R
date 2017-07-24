@@ -3,22 +3,20 @@ library(tidyverse)
 library(data.table)
 library(readxl)
 library(digest)
-library(genderizeR)
 
 
 
-# cleaning text
 
-# User name
-names(data_full)
-data_full %>% count(is.na(ID), is.na(ID.y))
+data_full2 <- read_csv("data/DataKind_Merged_Data2.csv")
+
+
 
 
 # strip down to user info and record ids
-user_data <- data_full %>% select(RowID, ID, ID.y, RefNo, RefNo.y, Type, PostDate, ReferrerName, ReferrerEmail, ReferrerTelephone, UserName,
+user_data <- data_full2 %>% select(RowID, ID, ID.y, RefNo, RefNo.y, Type, PostDate, ReferrerName, ReferrerEmail, ReferrerTelephone, UserName,
                     UserEmail, UserTelephoneNo)
 
-# Remove ReferrerName
+# Remove ReferrerName as it is unused
 
 user_data <- user_data %>% mutate(ReferrerName = NULL)
 
@@ -58,11 +56,11 @@ user_data <- user_data %>% mutate(PhoneSL = gsub("(^[0-9])(\\.[0-9])([[:digit:]]
                                   PhoneCHAIN = gsub("(^[0-9])(\\.[0-9])([[:digit:]]{9})([eE]\\+0?11)", "0\\3", PhoneCHAIN)) 
 
 
-# check for email contradictions
-# Check for contradictions
-user_data %>% filter(!is.na(ReferrerEmail), !is.na(UserEmail), 
-                     ReferrerEmail != UserEmail, PhoneSL != PhoneCHAIN) %>%
-        View()
+
+# Check for contradictions in phone and email across CHAIN and SL sources
+#user_data %>% filter(!is.na(ReferrerEmail), !is.na(UserEmail), 
+#                     ReferrerEmail != UserEmail, PhoneSL != PhoneCHAIN) %>%
+#        View()
 # There are 75 cases where emails and phones don't match between SL and CHAIN but dates all do. 
 
 # for purpose of original reporter, will take the Streetlink reference ones. CHAIN seems to 
@@ -96,7 +94,7 @@ user_data <- user_data %>% mutate(PhoneSL = ifelse(is.na(PhoneSL) & !is.na(Phone
 user_data <- user_data %>% mutate(UserPhone = ifelse(!is.na(UserPhone) & !grepl("[[:digit:]]{3}", UserPhone), "0", UserPhone))
 
 
-# clean all data that is Self Referrer
+# strip all data that is Self Referrer
 user_data <- user_data %>% mutate(UserName = ifelse(Type == "Self", NA, UserName),
                      UserPhone = ifelse(Type == "Self", NA, UserPhone),
                      UserEmail = ifelse(Type == "Self", NA, UserEmail))
@@ -114,18 +112,20 @@ user_data <- user_data %>% mutate(UserPhoneProvided = ifelse(!is.na(UserPhone), 
 user_data <- user_data %>% separate(UserName, into = c("UserFirstName", "UserLastName"), sep = "\\.? ",
          remove = FALSE, extra = "merge")
 
+FirstNames <- user_data %>% count(UserFirstName, sort = T) #7549. can do in time :) 
+write_csv(FirstNames, "User_FirstNames.csv")
+
 # extract a first name from email (via chars before punctuation) to help with gender
 user_data <- user_data %>% extract(UserEmail, "EmailFirstName", "^([[:alpha:]]+)[[:punct:]]", remove = F) %>% 
         mutate(EmailFirstName = toupper(EmailFirstName))
-user_data %>% filter(is.na(UserName), !is.na(EmailFirstName)) %>% count(EmailFirstName, sort = T)
+user_data %>% count(EmailFirstName, sort = T) #25477 don't bother with genderizing, too messy. match on firstnames
 
 
 
 # find out a first count for users
 user_data %>% group_by(UserEmail, UserPhone, UserFirstName) %>% count(sort = T)
-FirstNames <- user_data %>% count(UserFirstName, sort = T) #7549. can do in time :) 
-write_csv(FirstNames, "User_FirstNames.csv")
-user_data %>% count(EmailFirstName, sort = T) #25477 don't bother with genderizing, too messy. match on firstnames
+
+
 #2085 cases of > 1 names per email (not NAs)
 #3233 cases of > 1 email per name (incl first names only)
 user_data %>% filter(!is.na(UserName)) %>% 
@@ -136,11 +136,22 @@ user_data %>% filter(!is.na(UserEmail)) %>%
 #        count(Phone, UserEmail, wt = length(unique(UserName)), sort = T) %>% View()
 #
 
-user_info <- user_data %>% count(UserEmail, UserPhone, UserFirstName, sort = T)
-user_info %>% View()
-user_data %>% count(UserEmail, UserPhone, sort = T)
-user_data2 <- user_data #save now before real dedupling 
-class(user_info)
-user_data
-                                                                         
+user_data %>% count(UserEmail, UserPhone, sort = T) #66k vs 68k including first names. i'm 
+# gonna id by first names too because i'd want to know, later, if some users at a charity/centre
+# were doing better so that they could set best practice. right?
+
+usertriple <- user_data %>% filter(!is.na(UserEmail), !is.na(UserFirstName), !is.na(UserPhone),
+                     UserEmail != "0", UserFirstName != "0", UserPhone != "0") %>% 
+        mutate(UserTripleID = paste0(UserEmail, UserPhone, UserFirstName)) 
+
+usertripletobind <- usertriple %>% select(RowID, UserTripleID)
+usertripledistinct <- usertriple %>% distinct(UserTripleID, .keep_all = TRUE)
+usertriple %>% View()
+user_data2 <- user_data %>% left_join(usertripletobind, by = "RowID")
+nottriple <- user_data2 %>% filter(is.na(UserTripleID))
+user_data2 %>% 
+        filter(is.na(UserTripleID), UserEmail %in% usertriple$UserEmail) %>% View()
+# join by email and phone
+usertriple2 <- usertripledistinct %>% left_join(nottriple, by = c("UserEmail", "UserPhone"))
+usertripledistinct %>% count(UserEmail, UserPhone) %>% filter(n >= 2)
                                                                           
