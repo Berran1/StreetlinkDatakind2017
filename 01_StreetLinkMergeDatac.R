@@ -14,9 +14,10 @@ setwd(data_directory)
 # use original xlsx files - DELETE if pre-converted to csv - and convert to data.table for 
 # text cleaning
 data_A <- read_xlsx("Merged data_from_CHAIN_and_SQL.xlsx")
-# add identifier
+# add identifier for these records
 data_A <- data_A %>% mutate(FromMerged = 1)
 str(data_A)
+# convert to data table for the local authority cleaning
 data_A <- data.table(data_A)
 
 
@@ -125,7 +126,7 @@ data_E <- data_E %>% rename(FeedbackRequested = DoesReferrerWantFeedback,
                             Outcome = HLOutcome,
                             DateOfFeedback = DateReferrerContacted, Channel = ReferralMethod, 
                             OutcomeNotes = ACTIONTAKENNOTES, Ethnicity = EthnicOrigin)
-names(data_E)                                    
+
 data_B <- data_B %>% rename(FeedbackRequested = ContactMeREResults)
 
 # Cols in CHAIN and All Streetlink
@@ -174,11 +175,11 @@ CHAINwithSL <- data_E %>% filter(grepl("^W", StreetlinkWebsiteReferralNumber)) %
 CHAINwithSL %>% select(HowRegularly.y) %>% View()
 # write to file for later deduping
 write_csv(CHAINwithSL, "CHAINwithSL.csv")
-
+write_csv(data_D, "LocalAuthorityRegions.csv")
              
 
 ## Merge files
-write_csv(data_D, "LocalAuthorityRegions.csv")
+
 
 #data_merged <- data_A %>% left_join(data_D, by = "LocalAuthority")
 data_merged <- data_A # join regions after resolving LA conflicts and cleaning - next file!
@@ -248,15 +249,10 @@ data_all <- bind_rows(data_all, data_Bothernotmerged)
 data_all <- data_all %>% rowid_to_column(var = "RowID")
 
 
-
-
-## Clean data - TO BE ADDED HERE
-
-
 # Write file
 write.csv(data_all,"DataKind_Merged_Data.csv",row.names=FALSE)
 
-# deal with entries that are duplicates in merged (with Streetlink and CHAIN entries) n = 125
+# preserve entries that are duplicates in merged (with Streetlink and CHAIN entries) n = 125
 missingmerged <- data_A %>% anti_join(data_MCS, by = "RefNo") 
 
 dupsB <- data_B %>% filter(RefNo %in% missingmerged$RefNo)

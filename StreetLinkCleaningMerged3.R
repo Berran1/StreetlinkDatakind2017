@@ -5,12 +5,10 @@ library(forcats)
 library(stringr)
 library(zoo)
 library(lubridate)
+library(janitor)
 
-"%w/o%" <- function(x, y) x[!x %in% y]
 
- getwd()
 
-setwd("../")
 # import file 
 data_full <- read_csv("data/DataKind_Merged_Data.csv")
 names(data_full)
@@ -19,6 +17,7 @@ names(data_full)
 data_full <- data_full %>% map(~ gsub("(null|N/A)", NA, .x, ignore.case = T)) %>% 
         as_tibble() 
 
+data_fullA <- data_full
 
 
 
@@ -104,6 +103,7 @@ data_full <- data_full %>% mutate(ReportCompleted = as.Date(ReportCompleted, ori
 
 # rename to be more clearly a date
 data_full <- data_full %>% rename(ReportCompletedDate = ReportCompleted)
+
 #data_full %>% count(DateLAFollowUp1 - DateFirstAttempt) %>% View()
 #data_full %>% count(LAFollowUp1)
 #251 confirmation 288 refererral being actioned 1049 response requested
@@ -129,15 +129,13 @@ data_full <- data_full %>% rename(ReportCompletedDate = ReportCompleted)
 #data_full %>% count(ExcludeFromMergedData.y) # either false or NA delete
 
 
-
-# get rid of some more unhelpful/allNULL cols
+# get rid of some more unhelpful/allNULL cols. see comments thru the file for reasons and counts
 data_full <- data_full %>% mutate(ExcludeFromMergedData = NULL,
                                   ExcludeFromMergedData.y = NULL,
                                 DuplicateReport = NULL,
                                   IDNoOnly = NULL,
                                   FeedbackProvidedBy = NULL,
                                   LAEmail = NULL,
-                                  ContactMeREResults = NULL,
                                   LocalAuthorityID = NULL,
                                   TermsAndConditionsId = NULL,
                                   ONGOINGACTIONBYOUTREACHTEAM = NULL,
@@ -146,7 +144,9 @@ data_full <- data_full %>% mutate(ExcludeFromMergedData = NULL,
                                   BuildingNo = NULL,
                                   BuildingNo.y = NULL,
                                   StreetName = NULL,
-                                  LatitudeLongitude = NULL)
+                                  LatitudeLongitude = NULL,
+                                LAFollowUp1 = NULL,
+                                FollowedUpWithLA = NULL)
 
 # remove date cols we decided don't need:
 data_full <- data_full %>% mutate(DateLAFollowUp1 = NULL,
@@ -170,7 +170,7 @@ source("StreetlinkCleaningFiles/Feedbackcoding.R")
 
 data_fullB <- data_full
 
-# code binaries for filled in cols that may give too much info SUPERSEDED
+# code binaries for filled in cols that may give too much info NOPE SUPERSEDED
 # code length of text for cols that may reveal info.
 
 # How Regularly
@@ -221,7 +221,7 @@ data_full <- data_full %>% mutate(LocationDescriptionTextLength = str_length(Loc
 #                                                           !is.na(FacialHair) | !is.na(SkinColour) | !is.na(Ethnicity) |
 #                                                           !is.na(Gender) | !is.na(AgeRange) | !is.na(SelfReferralDetails),
 #                                                   1, 0)) 
-# 3000 with nothing - not actually useful. so reject this idea of flag and do count of Appearance instead. 
+# 3000 of 126k with nothing - not actually useful. so reject this idea of flag and do count of Appearance instead. 
 
 data_full <- data_full %>% mutate(AppearanceTextLength = str_length(Appearance))
 # remove all except those retained for reporting: AgeRange, Gender, Ethnicity
@@ -236,7 +236,7 @@ data_full <- data_full %>% mutate(SkinColour = NULL,
                                   Appearance = NULL,
                                   SelfReferralDetails = NULL)
 
-# recode ethnicity from CHAIN to match that in merged (cleaned) data - higher level
+# recode gender error and ethnicity from CHAIN to match that in merged (cleaned) data - higher level
 data_full <- data_full %>% mutate(Gender = recode(Gender, "Not known" = "Unknown"),
                                   Ethnicity = recode(Ethnicity, 
                                                      "Not sure" = "Unknown",
@@ -248,6 +248,11 @@ data_full <- data_full %>% mutate(Gender = recode(Gender, "Not known" = "Unknown
                                   Ethnicity = gsub("^Black.*", "Black", Ethnicity),
                                   Ethnicity = gsub("^Mixed.*", "Mixed", Ethnicity),
                                   Ethnicity = gsub("^White.*", "White", Ethnicity))
+
+# remove duplicate notes PID too 
+# keep duplicate notes so people know if it might be a duplicate, but has PID so transfer to flag
+data_full <- data_full %>% mutate(DuplicateNoteEntered = ifelse(!is.na(DuplicateNotes), 1, 0),
+                                    DuplicateNotes = NULL)
 
 # Geography
 
@@ -261,6 +266,16 @@ data_full <- data_full %>% mutate(LocalAuthority = ifelse(is.na(LocalAuthority),
 # join regions to used local authority
 data_full <- data_full %>% left_join(regionLookup, by = "LocalAuthority")
 rm(regionLookup)
+
+# referrals mostly have postcodes except for some early ones; no linking info to that sub-LA
+# level for non-referrals (users) so cut out things that could provide postcode like TownCityOrPostcode,
+# lat and long, map url - either used or not worth filling as incomplete etc i would argue?.
+# lat and lng could be useful for mapping viz but also v v locating of people so omit unless protest!
+data_full <- data_full %>% mutate(TownCityOrPostcode = NULL,
+                                  TownCityOrPostcode.y = NULL,
+                                  Lat = NULL,
+                                  Lng = NULL,
+                                  GoogleMapsURL = NULL)
 
 
 #data_full %>% filter(is.na(Postcode), is.na(Lat), !is.na(LatitudeLongitude)) %>% 
@@ -278,31 +293,56 @@ rm(regionLookup)
 # not found, or hubbed/taken to North hub/taken to north nsno hub... Some give client names and Ref numbers/LAuth contact names. Therefore remove this field. 
 
 # keep and rename ID cols for charity to re-use
-data_full <- data_full %>% rename(ID_CHAIN = ID,
-                                  ID_Streetlink = ID.y)
 
+data_full <- data_full %>% mutate(InMerged = ifelse(InMerged == "1" | InMerged.y == "1", 1, 0),
+                                  InMerged = ifelse(is.na(InMerged), 0, InMerged),
+                                  InMerged.y = NULL,
+                                  FromMerged = ifelse(is.na(FromMerged), "0", FromMerged))
+
+data_full <- data_full %>% rename(ID_CHAIN = ID,
+                                  ID_Streetlink = ID.y,
+                                  ReferralRefNo = RefNo,
+                                 ContactUser = ContactMe,
+                                  FeedbackRequestedByUser = FeedbackRequested,
+                                  FeedbackProvidedToUser = FeedbackProvidedToReferrer,
+                                  FeedbackDate = DateOfFeedback,
+                                 FeedbackMethodPreferred = PreferredMethodOfFeedback,
+                                  RoughSleeperGender = Gender,
+                                  RoughSleeperAgeRange = AgeRange,
+                                  RoughSleeperEthnicity = Ethnicity,
+                                  ReferredByStreetlink = FromMerged
+                                  )
+data_full <- data_full %>%  mutate(RefNo.y = NULL)
+                   
 names(data_full)
 data_fullB <- data_full
 
-data_full <- data_full %>% mutate(Channel = NULL,
-                                  Outcome = NULL) 
-data_full <- data_full %>% rename(Channel = Channel2,
-                                  Outcome = Outcome2)
+
 
 # should we flag LAFollowUp1? 
-data_full %>% count(LAFollowUp1)
+#data_full %>% count(LAFollowUp1) #1551 entered only and stopped June 2013 - therefore not useful
+#data_full %>% filter(!is.na(FollowedUpWithLA)) %>% View()
+#data_full %>% count(FollowedUpWithLA) # 1551 yes, all recording stopped end of 2015 (bar 16 times) 
+# so no longer done. so remove. 
 
-data_full <- data_full %>% mutate(InMerged = ifelse(InMerged == "1" | InMerged.y == "1", 1, 0),
-                     InMerged = ifelse(is.na(InMerged), 0, InMerged),
-                     InMerged.y = NULL)
 
-data_full %>% count(is.na(Postcode), FromMerged)
-data_full %>% filter(is.na(Postcode), is.na(Lat)) %>% View()
+
+#data_full %>% filter(is.na(FromMerged), InMerged == 1) %>% View()
+
 # unite the UserName, Email and TelephoneNo cols
-
+source("StreetlinkCleaningFiles/UserCleaningDetails.R")
 #setwd("Streetlink2017")
 
-                                                     
+# reorder to more sensible
+names(data_full) 
+data_full <- data_full %>% select(RowID:PostDate, PostTime, LocalAuthority, Channel, Type, Outcome, PositiveOutcome, ReportCompletedDate, CapacityOfReferral, 
+                                  UserID, ContactUser, starts_with("Feedback"), 
+                                  ReportCompletedDate,
+                                  starts_with("RoughSleeper"),HowRegularlyTextLength,
+                                  IssuesWeShouldBeAwareOfTextLength,LocationDescriptionTextLength,
+                                  AppearanceTextLength,
+                                  Postcode, PostcodeNoGaps, WardGSSCode, WardLabel, Region, DuplicateNoteEntered, everything())
+                                  
 
 write_csv(data_full, "data/DataKind_Scrubbed_Full.csv")
 

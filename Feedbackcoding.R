@@ -51,15 +51,19 @@ data_full <- data_full %>% mutate(FeedbackProvidedToReferrer =
 
 
 # if Date of Feedback is provided from either source, assume feedback given. 
-data_full <- data_full %>% mutate(FeedbackProvidedToReferrer = ifelse(!is.na(DateOfFeedback) | !is.na(DateOfFeedback.y),
+data_full <- data_full %>% 
+        mutate(FeedbackProvidedToReferrer = ifelse(!is.na(DateOfFeedback) | 
+                                                           !is.na(DateOfFeedback.y),
                                                          "Yes", FeedbackProvidedToReferrer))
 
 #data_full %>% count(DateOfFeedback != DateOfFeedback.y)
 # 128 where date differs. take DateofFeedback as more egregious errors in SL DateOfFeedback! 
 # so differences are of < 1 month in terms of real errors. 
-data_full <- data_full %>% mutate(DateOfFeedback = ifelse(is.na(DateOfFeedback), DateOfFeedback.y,
+data_full <- data_full %>% 
+        mutate(DateOfFeedback = ifelse(is.na(DateOfFeedback), DateOfFeedback.y,
                                                           DateOfFeedback),
-                                  DateOfFeedback.y = NULL) 
+                                  DateOfFeedback.y = NULL,
+               DateOfFeedback = as.Date(DateOfFeedback, origin = "1970-01-01")) 
 
 # if either feedback is yes in a conflict, assume someone did give feedback even if not requested.
 # otherwise use CHAIN as source

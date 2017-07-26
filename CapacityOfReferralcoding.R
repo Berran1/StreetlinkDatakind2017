@@ -6,7 +6,8 @@ library(tidyverse)
 #str(data_full$Type)
 #
 # change All Streetlink terminology
-data_full <- data_full %>% mutate(Type = ifelse(Type == "Report", "Referral", 
+data_full <- data_full %>% 
+        mutate(Type = ifelse(Type == "Report", "Referral", 
                                                 ifelse(Type == "Report yourself", "Self", Type)))
 
 # change CHAIN data Type based on ReferrerType col
@@ -46,7 +47,9 @@ data_full <- data_full %>% mutate(CapacityOfReferral= ifelse(CapacityOfReferral 
 data_full <- data_full %>% mutate(ReferrerType = NULL) 
 #data_full %>% count(CapacityOfReferral)
 #data_full %>% filter(CapacityOfReferral == "Unknown" | is.na(CapacityOfReferral)) %>% count(Other, sort = T) %>% View()
-#data_full %>% count(CapacityOfReferral,Other) %>% filter(grepl("self", Other, ignore.case= T)) %>% View()
+data_full %>% count(CapacityOfReferral,Other) %>% filter(grepl("neighb", Other, ignore.case= T)) %>% View()
+#data_full %>% filter(!is.na(Other),CapacityOfReferral == "Unknown") %>% count(Other, sort = T)
+## User OTHER (from Streetlink data) to code more user options for unknown and NA
 
 # all member of public and variations Unknown and NA coded to  members of public; other is more complex so leave for now 
 data_full <- data_full %>% 
@@ -83,3 +86,19 @@ data_full <- data_full %>%
 # priority. 
 # Note also that some say self or give personal info because people typed into it as freetext so Other 
 # needs to be removed. 
+
+# so if something entered in Other and is Unknown or NA in Capacity, i think we call that Other. 
+# if NANA or Unknown NA then do Unknown. this should at least remove one category! 
+# enough people had tech issues with dropdown that not truly different entry motivations necessarily
+# then make Other NULL
+
+data_full <- data_full %>% 
+        mutate(CapacityOfReferral = ifelse(!is.na(Other) & 
+                                                   (CapacityOfReferral == "Unknown" | 
+                                                            is.na(CapacityOfReferral)), 
+                                           "Other",
+                                           CapacityOfReferral),
+               CapacityOfReferral = ifelse(is.na(CapacityOfReferral), 
+                                           "Unknown", CapacityOfReferral),
+               Other = NULL)
+

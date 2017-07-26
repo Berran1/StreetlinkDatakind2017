@@ -39,13 +39,23 @@ data_full <- data_full %>% mutate(Outcome2 = fct_recode(Outcome2,
                                                         "other action taken" = "reconnected to services in another area",
                                                         "inappropriate referral" = "no action taken – no entitlement to local services" 
 )) 
-# to check: created on chain  but no CHAIN reference (n = 367)
-
+# create the positive and negative referral outcomes (confirmed with SL) and "other"
+# that appear only in non-referrals . though some like incomplete are in both 
+# data_full %>% filter(FromMerged == 1) %>% count(Outcome2)
 positiveOutcomes <- c("person already known", "accommodation outcome", "other action taken", 
-                      "engaging with services", "person found - unwilling to engage", "no action taken - identified hotspot")
-data_full <- data_full %>% mutate(PositiveOutcome = ifelse(Outcome2 %in% positiveOutcomes, 1, 0)) 
-# need to confirm these assignments! and work out what NA is. 
-#data_full %>% count(Outcome2) %>% write_csv("Outcomes.csv")
+                      "engaging with services", "person found - unwilling to engage")
+negativeOutcomes <- c("person not found", "incomplete referral", "local services did not respond",
+                      "outcome not yet known", "street activity, e.g. begging site", 
+                      "no action taken - identified hotspot")
+data_full <- data_full %>% 
+        mutate(PositiveOutcome = ifelse(Outcome2 %in% positiveOutcomes, 1, 
+                                        ifelse(Outcome2 %in% negativeOutcomes, 0, "Other"))) 
+
+#data_full %>% crosstab(Outcome2, PositiveOutcome)  # all only in 1 category
+data_full <- data_full %>% mutate(Outcome = Outcome2,
+                     Outcome2 = NULL)
+
+#data_full %>% count(Outcome, PositiveOutcome) %>% write_csv("Outcomes.csv")
 
 #data_full %>% count(CaseClosedReporting, Outcome2) %>% View()
 # mostly consistent. Use Outcome (also HLOutcomein CHAIN) as what reported to SL/HL. 
