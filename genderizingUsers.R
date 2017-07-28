@@ -18,7 +18,10 @@ FirstNames
 FirstNames3 <- FirstNames %>% slice(2002:n())
 UserNamegender3 <- findGivenNames(FirstNames3$UserFirstName, textPrepare= F)
 write_csv(UserNamegender3, "data/UserNames3.csv")
-FirstNames4 <- FirstNames %>% slice(3001:n())
-UserNamegender3
-FirstNamesSlice <- FirstNames %>% slice(4001:n())
-write_csv(FirstNamesSlice, "data/FirstNames4001on.csv")
+FirstNames4 <- firstNames %>% slice(3001:n())
+UserNamegender4 <- findGivenNames(FirstNames4$UserFirstName, textPrepare = F)
+write_csv(UserNamegender4, "data/UserNames4.csv")
+FirstNames5<- FirstNames %>% slice(4001:n())
+
+
+#write_csv(FirstNamesSlice, "data/FirstNames4001on.csv")

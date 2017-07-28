@@ -7,7 +7,7 @@ library(digest)
 
 
 
-data_full2 <- read_csv("data/DataKind_Scrubbed_Full.csv")
+data_full2 <- data_full
 
 
 names(data_full2)
@@ -95,8 +95,9 @@ user_data <- user_data %>% mutate(PhoneSL = ifelse(is.na(PhoneSL) & !is.na(Phone
 user_data <- user_data %>% mutate(UserPhone = ifelse(!is.na(UserPhone) & !grepl("[[:digit:]]{3}", UserPhone), "0", UserPhone))
 
 
-# strip all data that is Self Referrer
-user_data <- user_data %>% filter(Type == "Referral")
+
+
+
 # flag for having entered a name - may correlate with outcomes. 
 # Name Only relevant to SL data (not ReferrerName) as ReferrerName is all null. 
 user_data <- user_data %>% 
@@ -112,7 +113,7 @@ user_data <- user_data %>% separate(UserName, into = c("UserFirstName", "UserLas
          remove = FALSE, extra = "merge")
 
 FirstNames <- user_data %>% count(UserFirstName, sort = T) #7549. can do in time :) 
-write_csv(FirstNames, "User_FirstNames.csv")
+#write_csv(FirstNames, "User_FirstNames.csv")
 
 # extract a first name from email (via chars before punctuation) to help with gender
 user_data <- user_data %>% extract(UserEmail, "EmailFirstName", "^([[:alpha:]]+)[[:punct:]]", remove = F) %>% 
@@ -123,9 +124,16 @@ user_data <- user_data %>% extract(UserEmail, "EmailFirstName", "^([[:alpha:]]+)
 user_data <- user_data %>% mutate(UserEmail = ifelse(UserEmail == 0, NA, UserEmail),
                                   UserPhone = ifelse(UserPhone == 0, NA, UserPhone))
 
+
+# strip all data that is Self Referrer
+#user_data <- user_data %>% filter(Type == "Referral")
+## UPDATE keep in and be ok with repeat emails for id-ing repeat rough sleepers (as well as name)
+
+
+
 # write a file for the python dedupe
-user_data %>% select(RowID, UserEmail, UserPhone, UserFirstName, UserLastName) %>% 
-        write_csv("dedupePZ/restricted2.csv")
+#user_data %>% select(RowID, UserEmail, UserPhone, UserFirstName, UserLastName) %>% 
+#        write_csv("dedupePZ/restricted2.csv")
 user_dataA <- user_data #save here for exploring
 #user_data <- user_dataA
 
@@ -210,7 +218,7 @@ user_data <- user_data %>% mutate(UserID = ifelse(is.na(UserID) & !is.na(UserEma
 
 # now 6117 NA emails. check if known phone with single email associated
 no_email <- user_data %>% filter(is.na(UserID))
-no_email %>% View()
+#no_email %>% View()
 haveIDfromEmail <- user_data %>% filter(!is.na(UserID))
 phonesIDs <- haveIDfromEmail %>% select(UserPhone, UserID)
 #no_email %>% semi_join(haveIDfromEmail, by = "UserPhone") %>% View() #1278 
@@ -225,9 +233,9 @@ no_email2 <- uniqueemailforphone %>% right_join(no_email, by = "UserPhone") %>%
                UserID.y = NULL,
                UserID = UserID.x, 
                UserID.x = NULL)
-no_email2 %>% count(is.na(UserID))
+#no_email2 %>% count(is.na(UserID))
 
-# after much exploration - just use phone as ID. not perfect but fast
+# after much exploration - just use phone as ID if there's no email, for now. not perfect but fast
 no_email2 <- no_email2 %>% mutate(UserID = ifelse(is.na(UserID), UserPhone, UserID))
 
 # find phones that never have email and with common user name use phone number as ID
@@ -250,7 +258,7 @@ no_email2 <- no_email2 %>% mutate(UserID = ifelse(is.na(UserID), UserPhone, User
 user_data2 <- bind_rows(haveIDfromEmail, no_email2)
 # hash UserIDs that are not unknown
 # and can't find tidy NSE way quickly. in future: !! so: stack overflow baseR
-user_data2$UserIDhash <- sapply(user_data2$UserID, digest, algo="md5")
+user_data2$UserIDhash <- sapply(user_data2$UserID, digest, algo="xxhash32") #shorter hashes than md5
 user_data2 <- user_data2 %>% mutate(UserIDhash = ifelse(UserID == "Unknown", "Unknown", UserIDhash)) 
 write_csv(user_data2, "data/userLookup.csv")
 # create userid only for joining
@@ -258,7 +266,7 @@ write_csv(user_data2, "data/userLookup.csv")
 user_ids <- user_data2 %>% select(RowID, UserIDhash) %>% 
         mutate(RowID = as.character(RowID)) %>%
         rename(UserID = UserIDhash)
-str(user_ids)
+#user_ids %>% View()
 # join to data_full
 data_full <- data_full %>% left_join(user_ids, by = "RowID")
 names(data_full)
@@ -270,5 +278,5 @@ data_full <- data_full %>% mutate(ReferrerEmail = NULL,
                                   UserTelephoneNo = NULL,
                                   UserEmail = NULL)
 
-write_csv(data_full, "data/Datakind_Scrubbed_All.csv")
+#write_csv(data_full, "data/Datakind_Scrubbed_All.csv")
                                                   

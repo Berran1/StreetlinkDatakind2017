@@ -18,7 +18,7 @@ data_full <- data_full %>% map(~ gsub("(null|N/A)", NA, .x, ignore.case = T)) %>
         as_tibble() 
 
 data_fullA <- data_full
-
+#data_full <- data_fullA
 
 
 
@@ -148,29 +148,38 @@ data_full <- data_full %>% mutate(ExcludeFromMergedData = NULL,
                                 LAFollowUp1 = NULL,
                                 FollowedUpWithLA = NULL)
 
-# remove date cols we decided don't need:
+# remove date cols I decided don't need:
 data_full <- data_full %>% mutate(DateLAFollowUp1 = NULL,
                                   DateFirstAttempt = NULL,
                                   DateOfFollowUp = NULL,
                                   DateOfActiondecisionByLA = NULL)
 
 data_fullB <- data_full #safety save
-
+#data_full <- data_fullB
 # clean outcomes
 # capacity needs to be before Feedback and UserCleaningDetails to set type
+# type of referral and capacity of referrer
 source("StreetlinkCleaningFiles/CapacityOfReferralcoding.R")
 
+# channel of connection
 source("StreetlinkCleaningFiles/Channelcoding.R")
 
+# outcomes
 source("StreetlinkCleaningFiles/OutcomesCoding.R")
 
+# feedback to user
 source("StreetlinkCleaningFiles/Feedbackcoding.R")
 
+# get more rough sleeper details - do before UserDetailsCleaning for RS self details hash
+source("StreetlinkCleaningFiles/InfoSeparate2.R")
+
+#names(data_full)
+#data_full %>% count(RoughSleeperEthnicity)
 # unite the UserName, Email and TelephoneNo cols here and create UserID
-source("StreetlinkCleaningFiles/UserCleaningDetails.R")
+source("StreetlinkCleaningFiles/UserDetailsCleaning.R")
 
 
-data_fullB <- data_full
+#data_fullB <- data_full
 
 # code binaries for filled in cols that may give too much info NOPE SUPERSEDED
 # code length of text for cols that may reveal info.
@@ -231,33 +240,38 @@ data_full <- data_full %>% mutate(AppearanceTextLength = str_length(Appearance))
 data_full <- data_full %>% mutate(SkinColour = NULL, 
                                   FacialHair = NULL,
                                   Height = NULL,
-                                  FirstName = NULL,
-                                  LastName = NULL,
+                                  Appearance = NULL,
                                   Age = NULL,
                                   RoughSleeperInfo = NULL,
-                                  Appearance = NULL,
                                   SelfReferralDetails = NULL)
 
+data_full %>% View()
 # recode gender error and ethnicity from CHAIN to match that in merged (cleaned) data - higher level
-data_full <- data_full %>% mutate(Gender = recode(Gender, "Not known" = "Unknown"),
-                                  Ethnicity = recode(Ethnicity, 
-                                                     "Not sure" = "Unknown",
-                                                     "Unkown" = "Unknown",
-                                                     "Chinese" = "Asian",
-                                                     "Arab" = "Asian"
-                                  ),
-                                  Ethnicity = gsub("^Asian.*", "Asian", Ethnicity),
-                                  Ethnicity = gsub("^Black.*", "Black", Ethnicity),
-                                  Ethnicity = gsub("^Mixed.*", "Mixed", Ethnicity),
-                                  Ethnicity = gsub("^White.*", "White", Ethnicity))
-
+# data_full <- data_full %>% mutate(RoughSleeperGender = recode(RoughSleeperGender, "Not known" = "Unknown"),
+#                                   RoughSleeperEthnicity = recode(RoughSleeperEthnicity, 
+#                                                      "Not sure" = "Unknown",
+#                                                      "Not" = "Unknown",
+#                                                      "none" = "Unknown",
+#                                                      "Unkown" = "Unknown",
+#                                                      "Chinese" = "Asian",
+#                                                      "Arab" = "Asian"
+#                                   ),
+#                                   RoughSleeperEthnicity = gsub("^Asian.*", "Asian", RoughSleeperEthnicity),
+#                                   RoughSleeperEthnicity = gsub("^Black.*", "Black", RoughSleeperEthnicity),
+#                                   RoughSleeperEthnicity = gsub("^Mixed.*", "Mixed", RoughSleeperEthnicity),
+#                                   RoughSleeperEthnicity = gsub("^White.*", "White", RoughSleeperEthnicity),
+#                                   RoughSleeperEthnicity = gsub("[[:blank:]]+", "", RoughSleeperEthnicity))
+# data_full %>% count(RoughSleeperEthnicity) %>% View()
+# data_full %>% count(RoughSleeperGender) %>% View()
 # remove duplicate notes PID too 
 # keep duplicate notes so people know if it might be a duplicate, but has PID so transfer to flag
 
 
-data_full <- data_full %>% mutate(DuplicateNoteEntered = ifelse(!is.na(DuplicateNotes), 1, 0))
+data_full <- data_full %>% mutate(DuplicateNoteEntered = ifelse(!is.na(DuplicateNotes), 1, 0),
+                                  DuplicateNotes = NULL)
 
-data_full2 %>% filter(!is.na(DuplicateNotes)) %>% View()
+# see if duplicates are findable - IF TIME
+#data_full2 %>% filter(!is.na(DuplicateNotes)) %>% View()
 
 # Geography
 
@@ -270,6 +284,8 @@ data_full <- data_full %>% mutate(LocalAuthority = ifelse(is.na(LocalAuthority),
                                   LocalAuthority.y = NULL)
 # join regions to used local authority
 data_full <- data_full %>% left_join(regionLookup, by = "LocalAuthority")
+# because process differs if in london, make that easier to find!
+data_full <- data_full %>% mutate(RegionLondon = ifelse(Region == "LONDON", 1, 0))
 rm(regionLookup)
 
 # referrals mostly have postcodes except for some early ones; no linking info to that sub-LA
@@ -312,15 +328,13 @@ data_full <- data_full %>% rename(ID_CHAIN = ID,
                                   FeedbackProvidedToUser = FeedbackProvidedToReferrer,
                                   FeedbackDate = DateOfFeedback,
                                  FeedbackMethodPreferred = PreferredMethodOfFeedback,
-                                  RoughSleeperGender = Gender,
-                                  RoughSleeperAgeRange = AgeRange,
-                                  RoughSleeperEthnicity = Ethnicity,
                                   ReferredByStreetlink = FromMerged
                                   )
+#names(data_full)
 data_full <- data_full %>%  mutate(RefNo.y = NULL)
                    
-names(data_full)
-data_fullB <- data_full
+#names(data_full)
+data_fullC <- data_full
 
 
 
@@ -341,12 +355,11 @@ data_fullB <- data_full
 names(data_full) 
 data_full <- data_full %>% select(RowID:PostDate, PostTime, LocalAuthority, Channel, Type, Outcome, PositiveOutcome, ReportCompletedDate, CapacityOfReferral, 
                                   UserID, ContactUser, starts_with("Feedback"), 
-                                  ReportCompletedDate,
-                                  starts_with("RoughSleeper"),HowRegularlyTextLength,
+                                  starts_with("RoughSleeper"), starts_with("RS"), HowRegularlyTextLength,
                                   IssuesWeShouldBeAwareOfTextLength,LocationDescriptionTextLength,
                                   AppearanceTextLength,
-                                  Postcode, PostcodeNoGaps, WardGSSCode, WardLabel, Region, DuplicateNoteEntered, everything())
-                                  
+                                  Postcode, PostcodeNoGaps, WardGSSCode, WardLabel, Region, RegionLondon, DuplicateNoteEntered, everything())
+                                
 
 write_csv(data_full, "data/DataKind_Scrubbed_Full.csv")
 names(data_full2)
